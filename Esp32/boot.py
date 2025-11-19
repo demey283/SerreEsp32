@@ -1,6 +1,20 @@
-# This file is executed on every boot (including wake-boot from deepsleep)
-#import esp
-#esp.osdebug(None)
-#import webrepl
-#webrepl.start()
-print("hello world")
+import time
+from machine import Pin
+import onewire, ds18x20
+
+data_pin = Pin(18)  
+
+ow = onewire.OneWire(data_pin)
+ds = ds18x20.DS18X20(ow)
+
+
+roms = ds.scan()
+print("Gevonden sensoren:", roms)
+
+while True:
+    ds.convert_temp()      
+    time.sleep_ms(750)      
+    for rom in roms:
+        temp = ds.read_temp(rom)
+        print("Temperatuur:", temp, "°C")
+    time.sleep(1)
