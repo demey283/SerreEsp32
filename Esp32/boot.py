@@ -1,40 +1,67 @@
 import time
+import json
 from machine import Pin
 import onewire, ds18x20
-import json
+import sys
+import uselect
 
-data_pin = Pin(18)
+
+poll = uselect.poll()
+poll.register(sys.stdin, uselect.POLLIN)
+
+
+DATA_PIN = 18
+data_pin = Pin(DATA_PIN)
 ow = onewire.OneWire(data_pin)
 ds = ds18x20.DS18X20(ow)
 roms = ds.scan()
-filename = "data.json"
+print("DS18B20 gevonden:", roms)
 
-try:
-    with open(filename, "r") as f:
-        pass
-except:
-    with open(filename, "w") as f:
-        json.dump([], f)
+
+time_offset = 0
+started = False
+
+
+print(json.dumps({"status": "ready"}))
+
+
+def check_serial():
+    global time_offset, started
+    if poll.poll(0):
+        try:
+            line = sys.stdin.readline().strip()
+            data = json.loads(line)
+            if data.get("type") == "sync_time":
+                pc_time = int(data["timestamp"])
+                time_offset = pc_time - int(time.time())
+                print(json.dumps({"status": "time_synced"}))
+            elif data.get("type") == "start":
+                started = True
+                print(json.dumps({"status": "started"}))
+        except:
+            pass
+
+
+while not started:
+    check_serial()
+    time.sleep(0.1)
+
 
 while True:
+    check_serial()
+
     ds.convert_temp()
     time.sleep_ms(750)
+
     for rom in roms:
         temp = ds.read_temp(rom)
-        entry = {"Temperatuur": temp, "Tijd": time.time()}
+        current_time = int(time.time() + time_offset)
 
-        with open(filename, "r") as f:
-            data = json.load(f)
-        data.append(entry)
-        with open(filename, "w") as f:
-            json.dump(data, f)
 
-        for e in data:
-            local_time = time.localtime(e["Tijd"])
-            print("{:02d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} Temp: {:.2f}°C".format(
-                local_time[0], local_time[1], local_time[2],
-                local_time[3], local_time[4], local_time[5],
-                e["Temperatuur"]
-            ))
+        print(json.dumps({
+            "Temperatuur": temp,
+            "Tijd": current_time
+        }))
 
     time.sleep(5)
+
